@@ -43,8 +43,17 @@ const dbReducer = async (
 		).exec();
 	} else if (action.type === "sheet_metadataUpdate") {
 		//# Update sheet metadata
+
+		const updateName = (action.data.name && { name: action.data.name }) || {};
+		const updateMembers =
+			(action.data.members && {
+				$pull: { members: { $in: action.data.members.remove } },
+				$push: { members: { $each: action.data.members.add } },
+			}) ||
+			{};
 		SheetModel.findByIdAndUpdate(sheetId, {
-			$set: { name: action.data.name, members: action.data.members },
+			...(updateName as any),
+			...(updateMembers as any),
 			...updateMetaFields,
 		}).exec();
 	}
