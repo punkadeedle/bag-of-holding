@@ -38,6 +38,10 @@ export interface SheetPageState {
 		property: ProcessableItemProperty;
 		direction: "ascending" | "descending";
 	};
+	sheetOptionsMembersStack: {
+		add: string[];
+		remove: string[];
+	};
 }
 
 const sheetPageState = createHookstate<SheetPageState>({
@@ -61,6 +65,16 @@ const sheetPageState = createHookstate<SheetPageState>({
 	ui: {
 		searchbarValue: "",
 		openFilter: "none",
+	},
+	/**
+	 * A queue for updates to execute on the state of a sheet's members
+	 * When the sheetOptions dialog is submitted, all strings in the 'add' array
+	 * will be added as members, and all strings in the 'remove' array will be
+	 * removed.
+	 */
+	sheetOptionsMembersStack: {
+		add: [],
+		remove: [],
 	},
 });
 
@@ -95,8 +109,8 @@ export const useSheetPageState = () => {
 			(item) =>
 				sorting.property === "quantity" || sorting.property === "weight"
 					? (item[sorting.property] as number) * item.quantity
-					//? If 'quantity' or 'weight' are being sorted by, multiply them by the quantity
-					: item[sorting.property],
+					: //? If 'quantity' or 'weight' are being sorted by, multiply them by the quantity
+					  item[sorting.property],
 			(item) => item.name,
 			//? We add a second layer of sorting in the name property to ensure consistency when duplicate values exist in the same column
 		]);
@@ -182,6 +196,8 @@ export const useSheetPageState = () => {
 		getUniqueCategories: (items: InventoryItemFields[]) =>
 			unique(items.map((item) => item.category)).filter((item) => !!item),
 
+		sheetOptionsMemberStack: state.sheetOptionsMembersStack.value,
+
 		//# ACTIONS
 		/**
 		 * Open a dialog
@@ -203,9 +219,15 @@ export const useSheetPageState = () => {
 
 		/**
 		 * Close dialog
+		 *
+		 * If the dialog that was open was the 'sheetOptions' dialog,
+		 * we reset the sheetMembers stack field
 		 */
 		closeDialog: () => {
 			state.dialog.merge({ isOpen: false });
+			if (state.dialog.type.value === "sheetOptions") {
+				state.sheetOptionsMembersStack.set({ add: [], remove: [] });
+			}
 		},
 
 		/**
@@ -285,6 +307,38 @@ export const useSheetPageState = () => {
 			} else {
 				state.sorting.property.set(column);
 				state.sorting.direction.set("ascending");
+			}
+		},
+
+		/**
+		 * Send a member to the sheet options member stack.
+		 *
+		 * If a member is sent to be added, it will be added to the 'add'
+		 * stack. However, if that member is already in the 'remove' stack,
+		 * then it will instead just be removed from the remove stack. The
+		 * opposite is true when sending a member to be removed;
+		 *
+		 * @param {"add" | "remove"} action Whether the provided member is to
+		 * be added or removed from the sheet.
+		 * @param {string} member The member to added or removed from the sheet
+		 */
+		sendToMemberStack: (action: "add" | "remove", member: string) => {
+			const removeMembersState = state.sheetOptionsMembersStack.remove;
+			const addMembersState = state.sheetOptionsMembersStack.add;
+
+			const primaryStack =
+				action === "add" ? addMembersState : removeMembersState;
+			//? The 'primary' stack is the stack we want to add the member too
+			const secondaryStack =
+				action === "add" ? removeMembersState : addMembersState;
+			//? The 'secondary' stack is the stack we want to remove the member from if it is already present in it
+
+			if (secondaryStack.value.includes(member)) {
+				secondaryStack.set(secondaryStack.value.filter((m) => m !== member));
+				//? If the member is already in the secondaryStack, remove it
+			} else {
+				primaryStack.set([...primaryStack.value, member]);
+				//? If the member was not already in the secondary stack, add it to the primary stack
 			}
 		},
 	};
