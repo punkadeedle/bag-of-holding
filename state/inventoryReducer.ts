@@ -5,13 +5,16 @@ import { merge } from "merge-anything";
 import InventoryItemFields from "../types/InventoryItemFields";
 import InventorySheetFields from "../types/InventorySheetFields";
 import InventorySheetState, {
+	ActionData,
 	InventorySheetStateAction,
+	UpdateSheetMetaDataAction,
 } from "../types/InventorySheetState";
 import createInventoryItem from "../utils/createInventoryItem";
 import sendSheetAction from "../services/sendSheetAction";
 import { logEvent, logException } from "../utils/analyticsHooks";
 import codeToTitle from "code-to-title";
 import stringifyObject from "stringify-object";
+import blockProdBuild from "../utils/blockProdBuild";
 
 //TODO: Create separate 'server' reducer that processes how to update mongo state
 
@@ -111,8 +114,22 @@ const inventoryReducer = (
 			return state;
 		case "sheet_metadataUpdate":
 			return produceNewState((draftState) => {
-				draftState.name = (data as { name: string }).name;
-				draftState.members = (data as { members: string[] }).members;
+				const {
+					name: newName,
+					members: newMembers,
+				} = data as ActionData<UpdateSheetMetaDataAction>;
+				if (newName) {
+					draftState.name = newName;
+				}
+				if (newMembers) {
+					draftState.members = draftState.members.filter(
+						(member) => !newMembers.remove.includes(member)
+					);
+					draftState.members = draftState.members.concat(newMembers.add);
+				}
+				blockProdBuild(
+					"When a member is removed, first check to see if it has been added, and if it has, just remove it from the add array. Also vice versa"
+				);
 			});
 	}
 };
